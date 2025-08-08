@@ -1,0 +1,377 @@
+
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>모세오경 계보도 (족보 위주, 혼합형)</title>
+<style>
+  :root{
+    --sidebar-width: 300px;
+    --bg: #fafafa;
+    --panel-bg: #ffffff;
+    --accent: #2b6cb0;
+    --muted: #666;
+  }
+  html,body{height:100%;margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Noto Sans CJK KR',sans-serif;background:var(--bg);color:#222}
+  #app{display:flex;height:100vh;gap:12px;padding:12px;box-sizing:border-box}
+  #main{flex:1; background:var(--panel-bg);border-radius:8px;box-shadow:0 6px 18px rgba(20,20,30,0.06);position:relative;overflow:hidden;display:flex;flex-direction:column}
+  #toolbar{padding:8px 12px;border-bottom:1px solid #eee;display:flex;gap:10px;align-items:center}
+  #legend{font-size:13px;color:var(--muted)}
+  #canvas-wrap{flex:1;position:relative;display:flex}
+  svg{width:100%;height:100%;display:block}
+  #sidebar{width:var(--sidebar-width);background:var(--panel-bg);border-radius:8px;box-shadow:0 6px 18px rgba(20,20,30,0.06);padding:12px;overflow:auto}
+  h3{margin:4px 0 8px 0;font-size:16px}
+  #progress-list{list-style:none;padding:0;margin:0;display:block}
+  #progress-list li{padding:8px 10px;border-radius:6px;margin-bottom:6px;cursor:pointer;border:1px solid transparent}
+  #progress-list li:hover{background:#f0f6ff;border-color:#d6e7ff}
+  #progress-list li.active{background:linear-gradient(90deg,#e6f1ff,#f8fbff);border-color:var(--accent)}
+  .node{cursor:pointer}
+  .node circle{fill:#fff;stroke:#2b6cb0;stroke-width:2}
+  .node text{font-size:12px;pointer-events:none}
+  .link{fill:none;stroke:#999;stroke-width:1.2;opacity:0.9}
+  .highlight circle{stroke:#ff7f50;stroke-width:3;fill:#fff}
+  .pulse{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{
+    0%{filter:drop-shadow(0 0 0 rgba(255,127,80,0.0))}
+    50%{filter:drop-shadow(0 6px 12px rgba(255,127,80,0.15))}
+    100%{filter:drop-shadow(0 0 0 rgba(255,127,80,0.0))}
+  }
+  #tooltip{position:absolute;right:320px;top:16px;min-width:240px;max-width:320px;background:#fff;padding:12px;border-radius:8px;box-shadow:0 8px 24px rgba(20,20,30,0.08);display:none;z-index:20}
+  #tooltip h4{margin:0 0 6px 0;font-size:14px}
+  #tooltip p{margin:0;font-size:13px;color:var(--muted)}
+  .chapter-badge{display:inline-block;margin:4px 4px 0 0;padding:4px 6px;background:#f1f5f9;border-radius:6px;font-size:12px;color:#0b3a66;border:1px solid #e2eefb}
+  #footer-note{font-size:12px;color:var(--muted);padding:8px 12px;border-top:1px solid #eee}
+  /* responsive */
+  @media (max-width:900px){
+    #sidebar{display:none}
+    #tooltip{right:16px}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="main">
+    <div id="toolbar">
+      <div id="legend"><strong>모세오경 계보도</strong> — 족보 중심, 혼합형(세대는 수직, 형제는 수평)</div>
+      <div style="flex:1"></div>
+      <div style="font-size:13px;color:var(--muted)">줌: 마우스 휠 / 팬: 드래그 / 클릭: 정보</div>
+    </div>
+    <div id="canvas-wrap">
+      <div id="tooltip"></div>
+      <svg id="svgroot" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+    <div id="footer-note">데이터: 족보(창세기 4·5·10·11, 아브라함계보, 레위계보 등) 기준 — 본문은 저작권 허용 범위에서 요약 제공</div>
+  </div>
+
+  <div id="sidebar">
+    <h3>진도 (클릭하면 관련 계보로 이동)</h3>
+    <ul id="progress-list"></ul>
+    <hr/>
+    <div style="font-size:13px;color:var(--muted);margin-top:8px">
+      직접 링크: 각 진도 항목을 우클릭 → 링크 복사 가능 (앱 호스트 시 공유 가능)
+    </div>
+  </div>
+</div>
+
+<!-- D3.js CDN -->
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+// ========== 데이터 (간결한 샘플: 족보 중심) ==========
+const data = {
+  "id":"adam",
+  "name":"아담",
+  "summary":"인류 최초, 하와와 함께",
+  "chapters":["창세기 2","창세기 4","창세기 5"],
+  "children":[
+    {"id":"cain","name":"가인","summary":"아담과 하와의 장남","chapters":["창세기 4"]},
+    {"id":"abel","name":"아벨","summary":"가인의 형제, 살해됨","chapters":["창세기 4"]},
+    {"id":"seth","name":"셋","summary":"아담의 대체 후손","chapters":["창세기 4","창세기 5"],
+     "children":[
+       {"id":"enos","name":"에노스","summary":"셋의 아들","chapters":["창세기 4","창세기 5"]},
+       {"id":"kenan","name":"게난","summary":"에노스 후손","chapters":["창세기 5"],
+         "children":[
+           {"id":"mahalalel","name":"마할랄렐","summary":"","chapters":["창세기 5"],
+            "children":[
+              {"id":"jared","name":"야렛","summary":"","chapters":["창세기 5"],
+               "children":[
+                 {"id":"enoch","name":"에녹","summary":"하나님과 동행, 사라지다","chapters":["창세기 5"]},
+                 {"id":"methuselah","name":"므두셀라","summary":"장수한 자","chapters":["창세기 5"]},
+                 {"id":"lamech","name":"라멕","summary":"","chapters":["창세기 5"],
+                  "children":[
+                    {"id":"noah","name":"노아","summary":"홍수 때 방주 건설","chapters":["창세기 5","창세기 6","창세기 9"],
+                     "children":[
+                       {"id":"shem","name":"셈","summary":"노아의 장자 중 하나","chapters":["창세기 10","창세기 11"],
+                        "children":[
+                          {"id":"arphaxad","name":"아르박삿","summary":"","chapters":["창세기 10","창세기 11"],
+                           "children":[
+                             {"id":"salah","name":"살라","summary":"","chapters":["창세기 10","창세기 11"],
+                              "children":[
+                                {"id":"heber","name":"에벨","summary":"","chapters":["창세기 10","창세기 11"],
+                                 "children":[
+                                   {"id":"peleg","name":"벨렉","summary":"땅이 갈라진 시기 언급","chapters":["창세기 10","창세기 11"]},
+                                   {"id":"rehu","name":"레우","summary":"","chapters":["창세기 11"]},
+                                   {"id":"serug","name":"세룩","summary":"","chapters":["창세기 11"],
+                                     "children":[
+                                       {"id":"nahor","name":"나홀","summary":"","chapters":["창세기 11"],
+                                         "children":[
+                                           {"id":"terah","name":"데라","summary":"아브라함의 아버지","chapters":["창세기 11"],
+                                            "children":[
+                                              {"id":"abraham","name":"아브라함","summary":"믿음의 조상","chapters":["창세기 11","창세기 12","창세기 25"],
+                                               "children":[
+                                                 {"id":"isaac","name":"이삭","summary":"아브라함의 아들","chapters":["창세기 21","창세기 25"],
+                                                  "children":[
+                                                    {"id":"jacob","name":"야곱(이스라엘)","summary":"12지파의 아버지","chapters":["창세기 25","창세기 29","창세기 35"],
+                                                     "children":[
+                                                       {"id":"reuben","name":"르우벤","chapters":["창세기 29","창세기 35"]},
+                                                       {"id":"simeon","name":"시므온","chapters":["창세기 29","창세기 34"]},
+                                                       {"id":"levi","name":"레위","chapters":["창세기 29","출애굽기 2","민수기 3"],
+                                                        "children":[
+                                                          {"id":"kohath","name":"고핫","chapters":["출애굽기 6"],
+                                                           "children":[
+                                                             {"id":"amram","name":"암람","chapters":["출애굽기 6"],
+                                                              "children":[
+                                                                {"id":"moses","name":"모세","summary":"출애굽을 이끈 지도자","chapters":["출애굽기","민수기","신명기"]},
+                                                                {"id":"aaron","name":"아론","summary":"대제사장 계통","chapters":["출애굽기","민수기"]},
+                                                                {"id":"miriam","name":"미리암","chapters":["출애굽기","민수기"]}
+                                                              ]}
+                                                           ]}
+                                                        ]},
+                                                       {"id":"judah","name":"유다","chapters":["창세기 29","창세기 38"]},
+                                                       {"id":"dan","name":"단","chapters":["창세기 30"]},
+                                                       {"id":"naphtali","name":"납달리","chapters":["창세기 30"]},
+                                                       {"id":"gad","name":"갓","chapters":["창세기 30"]},
+                                                       {"id":"asher","name":"아셀","chapters":["창세기 30"]},
+                                                       {"id":"issachar","name":"잇사갈","chapters":["창세기 30"]},
+                                                       {"id":"zebulun","name":"스불론","chapters":["창세기 30"]},
+                                                       {"id":"joseph","name":"요셉","chapters":["창세기 30","창세기 37"]},
+                                                       {"id":"benjamin","name":"베냐민","chapters":["창세기 35","창세기 44"]}
+                                                     ]
+                                                   }
+                                                  ]
+                                                 }
+                                               ]
+                                              }
+                                            ]
+                                           }
+                                         ]
+                                       }
+                                     ]
+                                   }
+                                 ]
+                                }
+                              ]
+                             }
+                           ]
+                          }
+                        ]
+                       },
+                       {"id":"ham","name":"함","chapters":["창세기 10"]},
+                       {"id":"japheth","name":"야벳","chapters":["창세기 10"]}
+                     ]
+                    }
+                  ]
+                 }
+               ]
+              }
+            ]
+           }
+         ]
+        }
+      ]
+    }
+  ]
+};
+
+// ========== 유틸: 트리 순회와 챕터 맵 생성 ==========
+function traverse(node, fn){
+  fn(node);
+  if(node.children){
+    node.children.forEach(ch => traverse(ch, fn));
+  }
+}
+const chaptersMap = new Map();
+traverse(data, nd => {
+  const id = nd.id || nd.name;
+  if(nd.chapters){
+    nd.chapters.forEach(ch => {
+      if(!chaptersMap.has(ch)) chaptersMap.set(ch, []);
+      chaptersMap.get(ch).push(id);
+    });
+  }
+});
+
+// 정렬된 챕터 목록
+const chapterList = Array.from(chaptersMap.keys());
+
+// ========== SVG / D3 트리 셋업 ==========
+const svg = d3.select("#svgroot");
+const width = svg.node().clientWidth;
+const height = svg.node().clientHeight;
+
+// 그룹 요소
+svg.selectAll("*").remove();
+const gRoot = svg.append("g").attr("transform","translate(60,60)");
+
+// zoom & pan
+const zoom = d3.zoom().scaleExtent([0.2, 3]).on("zoom", (event) => {
+  gRoot.attr("transform", event.transform);
+});
+svg.call(zoom);
+
+// create a d3 hierarchy
+const root = d3.hierarchy(data, d=>d.children);
+// layout: nodeSize 활용 (간격 조정)
+const NODE_H = 120, NODE_W = 160;
+const tree = d3.tree().nodeSize([NODE_W, NODE_H]);
+tree(root);
+
+// 링크 그리기
+function render(){
+  // recompute layout (for consistent sizes)
+  tree(root);
+
+  gRoot.selectAll(".link").remove();
+  gRoot.selectAll(".node").remove();
+
+  // links
+  const links = gRoot.selectAll(".link")
+    .data(root.links(), d => d.target.data.id);
+
+  links.enter()
+    .append("path")
+    .attr("class","link")
+    .attr("d", d => {
+      // 곡선 연결(수직 세대: y, 수평 형제: x)
+      const sx = d.source.x, sy = d.source.y;
+      const tx = d.target.x, ty = d.target.y;
+      return `M${sx},${sy}C${sx},${(sy+ty)/2} ${tx},${(sy+ty)/2} ${tx},${ty}`;
+    });
+
+  // nodes
+  const nodes = gRoot.selectAll(".node")
+    .data(root.descendants(), d=>d.data.id);
+
+  const nodeEnter = nodes.enter()
+    .append("g")
+    .attr("class","node")
+    .attr("transform", d=>`translate(${d.x},${d.y})`)
+    .on("click", (event,d) => {
+      event.stopPropagation();
+      showTooltip(d.data, event.pageX, event.pageY);
+      highlightNodes([d.data.id]);
+    });
+
+  nodeEnter.append("circle").attr("r",18).attr("fill","#fff").attr("stroke","#2b6cb0").attr("stroke-width",2);
+  nodeEnter.append("text").attr("dy",6).attr("x",22).text(d => d.data.name).style("font-size","13px");
+
+  // small label for chapter count
+  nodeEnter.append("text").attr("class","chapcount").attr("x",22).attr("dy",22)
+    .style("font-size","11px").style("fill","#777")
+    .text(d => d.data.chapters ? `(${d.data.chapters.length})` : "");
+
+  // center the view initially on root
+}
+render();
+
+// ========== 툴팁 & 하이라이트 ==========
+const tooltip = d3.select("#tooltip");
+function showTooltip(d, pageX, pageY){
+  const html = `<h4>${d.name}</h4>
+    <p style="margin-top:6px">${d.summary || ""}</p>
+    <div style="margin-top:8px">${(d.chapters||[]).map(c=>`<span class="chapter-badge">${c}</span>`).join("")}</div>`;
+  tooltip.html(html).style("display","block");
+  // 포지셔닝 (간단)
+  const wrap = document.getElementById('canvas-wrap');
+  const rect = wrap.getBoundingClientRect();
+  tooltip.style("left", Math.max(12, rect.width - 340) + "px");
+  tooltip.style("top", "16px");
+}
+
+// 전체 하이라이트 해제
+function clearHighlights(){
+  gRoot.selectAll(".node").classed("highlight", false).selectAll("circle").classed("pulse", false);
+  d3.selectAll("#progress-list li").classed("active", false);
+  tooltip.style("display","none");
+}
+
+// 특정 id 배열을 강조
+function highlightNodes(ids){
+  clearHighlights();
+  const idset = new Set(ids);
+  gRoot.selectAll(".node").filter(d => idset.has(d.data.id)).classed("highlight", true).selectAll("circle").classed("pulse", true);
+  // zoom/center to first match
+  const first = gRoot.selectAll(".node").filter(d => idset.has(d.data.id)).data()[0];
+  if(first){
+    centerOn(first.x, first.y);
+  }
+}
+
+// 뷰 중앙으로 이동 (애니메이션)
+function centerOn(x,y){
+  const svgBox = svg.node().getBoundingClientRect();
+  const scale = d3.zoomTransform(svg.node()).k;
+  const tx = svgBox.width/2 - x*scale;
+  const ty = svgBox.height/2 - y*scale;
+  svg.transition().duration(700).call(zoom.transform, d3.zoomIdentity.translate(tx,ty).scale(scale));
+}
+
+// 클릭 시 챕터에 해당하는 노드로 이동
+function goToChapter(chapter){
+  const ids = chaptersMap.get(chapter) || [];
+  if(ids.length===0) return;
+  highlightNodes(ids);
+  // mark active in list
+  d3.selectAll("#progress-list li").classed("active", d=>d===chapter);
+  // update URL hash for sharable link
+  const safeHash = encodeURIComponent(chapter.replace(/\s+/g,"_"));
+  history.replaceState(null,null,"#"+safeHash);
+}
+
+// sidebar 채우기
+const progressList = d3.select("#progress-list");
+chapterList.forEach(ch => {
+  progressList.append("li")
+    .text(ch)
+    .on("click", () => goToChapter(ch))
+    .on("contextmenu", (event)=> { // copy link 팁을 위해 해시로 변경
+      event.preventDefault();
+      const safe = encodeURIComponent(ch.replace(/\s+/g,"_"));
+      const url = location.href.split('#')[0] + "#" + safe;
+      navigator.clipboard && navigator.clipboard.writeText(url);
+    });
+});
+
+// 해시로 들어왔을 때 포커스
+function focusFromHash(){
+  const h = decodeURIComponent(location.hash.replace('#','')) ;
+  if(!h) return;
+  const chapter = chapterList.find(ch => ch.replace(/\s+/g,"_") === h);
+  if(chapter) goToChapter(chapter);
+}
+focusFromHash();
+
+// 외부 클릭 시 툴팁 숨기기
+document.addEventListener("click", () => { clearHighlights(); });
+
+// 반응형: 창 리사이즈 시 간단 재렌더
+window.addEventListener("resize", () => {
+  svg.attr("width", svg.node().clientWidth).attr("height", svg.node().clientHeight);
+});
+
+// 설명 텍스트 (간단한 가이드)
+const guide = document.createElement("div");
+guide.style.position="absolute";
+guide.style.left="12px";
+guide.style.bottom="12px";
+guide.style.padding="8px 12px";
+guide.style.background="#ffffffcc";
+guide.style.borderRadius="8px";
+guide.style.boxShadow="0 6px 18px rgba(20,20,30,0.06)";
+guide.style.fontSize="13px";
+guide.innerHTML = "<strong>탐색 가이드</strong><br>• 마우스 드래그로 이동, 휠로 줌, 노드 클릭으로 세부 보기, 우측 진도 클릭으로 해당 챕터 계보로 이동합니다.";
+document.getElementById("canvas-wrap").appendChild(guide);
+
+</script>
+</body>
+</html>
